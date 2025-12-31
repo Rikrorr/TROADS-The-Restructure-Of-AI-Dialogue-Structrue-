@@ -147,13 +147,15 @@ export const ChatNode = memo(({ id, data, selected }: NodeProps<QABlockData>) =>
             // 左边的输入点
             id: 'left-source', type: 'source', position: Position.Left,
             style: { left: '-8px', width: '14px', height: '14px', background: '#fff', border: '3px solid #2196F3' },
-            onDoubleClick: onHandleDoubleClick
+            // 🔥🔥🔥 修改点 1：用箭头函数显式传递 'left-source' 🔥🔥🔥
+            onDoubleClick: (e) => onHandleDoubleClick(e, 'left-source')
         },
         {
             // 右边的输出点
             id: 'right-source', type: 'source', position: Position.Right,
             style: { right: '-8px', width: '14px', height: '14px', background: '#fff', border: '3px solid #2196F3' },
-            onDoubleClick: onHandleDoubleClick
+            // 🔥🔥🔥 修改点 2：用箭头函数显式传递 'right-source' 🔥🔥🔥
+            onDoubleClick: (e) => onHandleDoubleClick(e, 'right-source')
         }
     ], [onHandleDoubleClick]); // 只有双击处理函数变了，才重新生成配置
 

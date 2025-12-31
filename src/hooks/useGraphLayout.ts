@@ -14,5 +14,23 @@ export const useGraphLayout = () => {
         });
     }, [setNodes]);
 
-    return { handleNodeResize };
+    const runLayout = useCallback(() => {
+        setNodes((currentNodes) => {
+            let nextNodes = [...currentNodes];
+
+            // 1. 找到所有的分组节点 (GroupNode)
+            const groupNodes = nextNodes.filter(n => n.type === 'groupNode');
+
+            // 2. 对每个分组执行内部重排
+            groupNodes.forEach(group => {
+                nextNodes = LayoutUtils.rearrangeGroup(nextNodes, group.id);
+            });
+
+            return nextNodes;
+        });
+
+        console.log('全局布局重排已执行');
+    }, [setNodes]);
+
+    return { handleNodeResize, runLayout };
 };

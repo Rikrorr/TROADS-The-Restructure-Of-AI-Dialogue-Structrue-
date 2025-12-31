@@ -1,5 +1,5 @@
 // src/types.ts
-
+import type { Node, Edge } from 'reactflow';
 // =============================================================================
 // 1. 通用类型
 // =============================================================================
@@ -91,4 +91,11 @@ export interface CustomEdgeData {
 
     // 选中 Label 的回调
     onLabelSelect?: (labelId: string | null) => void;
+}
+
+export interface ProjectData {
+    version: string;
+    nodes: Node[];
+    edges: Edge[];
+    viewport?: { x: number; y: number; zoom: number };
 }

@@ -98,7 +98,7 @@ function FlowContent() {
     // 拿到“触发 AI 回答”的能力
     const { triggerStream } = useStreamAI();
     // 拿到“调整节点尺寸”的能力 (用于自动布局)
-    const { handleNodeResize } = useGraphLayout();
+    const { handleNodeResize, runLayout } = useGraphLayout();
 
     // 3. 🔥 解决“闭包陷阱”的核心操作 (Ref + Memo)
     // 问题：如果在 useEffect 里直接用 interactions，可能会因为依赖项变化导致死循环。
@@ -215,6 +215,12 @@ function FlowContent() {
                     onUpdateNode={handleUpdateNode} // 传给面板：改数据的能力
                     onDelete={interactions.handleDeleteSelected} // 传给面板：删除的能力
                     onCreate={interactions.handleNewConversation} // 传给面板：新建话题的能力
+
+                    setNodes={setNodes}
+                    setEdges={setEdges}
+                    // 🔥🔥🔥 传入重排函数 🔥🔥🔥
+                    // 当导入完成后，useDataPersistence 会自动调用这个函数
+                    onLayout={runLayout}
                 />
             </div>
 

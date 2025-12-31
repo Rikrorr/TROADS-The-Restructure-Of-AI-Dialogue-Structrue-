@@ -6,7 +6,7 @@ import {
     ZoomIn, ZoomOut, Maximize,
     AlignLeft, Plus, ChevronRight,
     List, ArrowLeft, type LucideIcon,
-    Save, FolderOpen, Camera
+    Save, FolderOpen, Camera, FileCode
 } from 'lucide-react';
 import {
     useReactFlow,
@@ -43,7 +43,20 @@ const STYLES = {
     // 面板结构
     panelHeader: { padding: '14px 16px', borderBottom: '1px solid #f0f0f0', fontSize: '14px', fontWeight: 600, color: '#333', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#fafafa' },
     panelBody: { flex: 1, padding: '16px', overflowY: 'auto' as const, display: 'flex', flexDirection: 'column' as const, gap: '16px' },
-    bottomControls: { display: 'flex', flexDirection: 'column' as const, gap: '12px', paddingTop: '20px', paddingBottom: '20px', borderTop: '1px solid #f0f0f0', width: '100%', alignItems: 'center' },
+
+// 🔥 Bottom Controls: 底部控制区样式调整
+    bottomControls: {
+        display: 'flex',
+        flexDirection: 'column' as const,
+        gap: '8px', // 稍微调小间距，因为按钮变多了
+        paddingTop: '16px',
+        paddingBottom: '16px',
+        borderTop: '1px solid #f0f0f0',
+        width: '100%',
+        alignItems: 'center',
+        backgroundColor: '#f9fafb' // 底部稍微给点浅灰背景，区分功能区
+    },
+
 
     // 原子组件样式
     formGroup: { display: 'flex', flexDirection: 'column' as const, gap: 6 },
@@ -75,7 +88,9 @@ const STYLES = {
 
     // Color Picker 特定
     colorInput: { width: 30, height: 30, padding: 0, border: 'none', cursor: 'pointer', borderRadius: 4 },
-    colorTextInput: { flex: 1 } // 将合并到 input 样式
+    colorTextInput: { flex: 1 }, // 将合并到 input 样式
+
+    separator: { width: '40%', height: 1, backgroundColor: '#d1d5db', margin: '4px 0' } // 分割线加深一点颜色
 };
 
 // -----------------------------------------------------------------------------
@@ -175,17 +190,22 @@ interface InspectorPanelProps {
     onCreate: () => void;
     onDelete: () => void;
     onUpdateNode: (id: string, data: Record<string, unknown>) => void;
+
+    setNodes: React.Dispatch<React.SetStateAction<Node[]>>;
+    setEdges: React.Dispatch<React.SetStateAction<Edge[]>>;
+    onLayout?: () => void;
 }
 
-export const InspectorPanel = memo(({ selectedNode: propSelectedNode, selectedEdge: propSelectedEdge, selectedLabelId, onCreate, onUpdateNode, onDelete }: InspectorPanelProps) => {
-    const { zoomIn, zoomOut, fitView, setNodes, setEdges } = useReactFlow();
+export const InspectorPanel = memo(({ selectedNode: propSelectedNode, selectedEdge: propSelectedEdge, selectedLabelId, onCreate, onUpdateNode, onDelete,setNodes, setEdges }: InspectorPanelProps) => {
+    const { zoomIn, zoomOut, fitView } = useReactFlow();
     const nodes = useNodes();
     const edges = useEdges();
 
-    const { exportToJson, importFromJson, exportToImage } = useDataPersistence(setNodes, setEdges);
+    const { exportToJson, importFromJson, exportToImage, importFromGeminiHtml } = useDataPersistence(setNodes, setEdges);
 
     // 隐藏的文件上传 input ref
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const htmlInputRef = useRef<HTMLInputElement>(null);
 
     const activeNode = useMemo(() => nodes.find(n => n.id === propSelectedNode?.id) || null, [nodes, propSelectedNode]);
 
@@ -443,26 +463,30 @@ export const InspectorPanel = memo(({ selectedNode: propSelectedNode, selectedEd
                     </>
                 )}
 
+                {/* 2. 占位符：把下面的推到底部 */}
                 <div style={STYLES.spacer} />
+
+                {/* 3. 🔥 统一底部控制区 (视图控制 + 项目管理) */}
                 <div style={STYLES.bottomControls}>
+                    {/* 视图缩放 */}
                     <IconButton icon={ZoomIn} onClick={() => zoomIn()} title="放大" />
                     <IconButton icon={Maximize} onClick={() => fitView()} title="适应屏幕" />
                     <IconButton icon={ZoomOut} onClick={() => zoomOut()} title="缩小" />
-                    {/* 🔥 1. 固定功能区：项目管理 (始终显示) */}
+
+                    {/* 分割线 */}
+                    <div style={STYLES.separator} />
+
+                    {/* 项目管理 */}
                     <IconButton icon={Save} onClick={exportToJson} title="保存项目 (JSON)" />
 
-                    {/* 读取按钮需要触发隐藏的 input */}
                     <IconButton icon={FolderOpen} onClick={() => fileInputRef.current?.click()} title="读取项目 (JSON)" />
-                    {/* 隐藏的文件输入框 */}
-                    <input
-                        type="file"
-                        ref={fileInputRef}
-                        onChange={importFromJson}
-                        style={{ display: 'none' }}
-                        accept=".json"
-                    />
-                    <IconButton icon={Camera} onClick={exportToImage} title="导出图片 (PNG)" />
+                    <input type="file" ref={fileInputRef} onChange={importFromJson} style={{ display: 'none' }} accept=".json" />
 
+                    {/* 🔥 也不要忘了我们刚做的 Gemini 导入功能 */}
+                    <IconButton icon={FileCode} onClick={() => htmlInputRef.current?.click()} title="导入 Gemini (HTML)" />
+                    <input type="file" ref={htmlInputRef} onChange={importFromGeminiHtml} style={{ display: 'none' }} accept=".html,.htm" />
+
+                    <IconButton icon={Camera} onClick={exportToImage} title="导出图片 (PNG)" />
                 </div>
             </div>
 

@@ -1,6 +1,6 @@
 // src/utils/layoutUtils.ts
 import type { Node } from 'reactflow';
-// 引入常量配置，如果路径报错，请确认 constants.ts 是否存在以及 export 是否正确
+// 引入常量配置
 import { LAYOUT_CONFIG } from '../constants';
 
 /**
@@ -57,9 +57,6 @@ export const LayoutUtils = {
     /**
      * 📏 计算 Group 容器需要的总高度
      * * 场景：用于判断父容器是否足够大，是否需要被子节点“撑开”。
-     * 参数 activeNodeId/activeNodeHeight：
-     * 用于处理“流式输出”或“拖拽中”的瞬时状态。
-     * 即使 DOM 还没更新，我们也可以强制用 activeNodeHeight 来模拟计算。
      */
     getGroupHeight: (siblings: Node[], activeNodeId?: string, activeNodeHeight?: number): number => {
         let maxBottomY = 0;
@@ -84,74 +81,95 @@ export const LayoutUtils = {
     },
 
     /**
-     * 🔥🔥🔥 核心布局引擎：响应式自动重排 (Auto-Layout)
-     * * 场景：当问答节点因为 AI 输出变高，或者手动 Resize 变高时调用。
-     * 作用：确保下方的节点自动下移，父容器自动变高，避免重叠。
-     * * @param nodes 全量节点数据
-     * @param nodeId 发生高度变化的节点 ID
-     * @param newHeight 该节点的新高度
+     * 🔥🔥🔥 新增核心：重排指定分组内的所有子节点 (Core Re-layout Logic)
+     * * 作用：将分组内的子节点按 Y 轴排序，紧凑排列，并更新分组高度。
+     * * 场景：用于 useGraphLayout.runLayout() 以及 adjustLayoutAfterResize 的底层实现。
+     * * @param allNodes 当前画布上所有的节点
+     * @param groupId 需要重排的分组 ID
+     * @returns 更新后的所有节点数组
      */
-    adjustLayoutAfterResize: (nodes: Node[], nodeId: string, newHeight: number): Node[] => {
-        // 1. Immutable 深拷贝
-        // React 状态不可变性原则：必须创建新对象，否则 React Flow 可能检测不到变化而不重绘
-        const nextNodes = nodes.map(n => ({
-            ...n,
-            style: { ...n.style },
-            position: { ...n.position }
-        }));
+    rearrangeGroup: (allNodes: Node[], groupId: string): Node[] => {
+        // 1. 找到该组的所有子节点
+        const siblings = allNodes.filter(n => n.parentNode === groupId);
 
-        // 2. 更新目标节点的高度数据
-        const targetNode = nextNodes.find(n => n.id === nodeId);
-        if (!targetNode) return nodes; // 防御性编程：找不到就原样返回
+        // 如果没有子节点，或者找不到父节点，直接返回原列表，不折腾
+        const groupNode = allNodes.find(n => n.id === groupId);
+        if (!groupNode || siblings.length === 0) return allNodes;
 
-        // 更新样式高度 (影响 CSS)
-        targetNode.style.height = newHeight;
-        // 更新内部高度属性 (影响 React Flow 句柄位置等)
-        targetNode.height = newHeight;
-
-        // 如果该节点没有父级 (是独立节点)，不需要做复杂的挤压布局
-        if (!targetNode.parentNode) {
-            return nextNodes;
-        }
-
-        // 3. 准备处理父分组
-        const groupId = targetNode.parentNode;
-        const groupNode = nextNodes.find(n => n.id === groupId);
-
-        if (!groupNode) return nextNodes; // 找不到爸爸，放弃治疗
-
-        // 4. 获取所有兄弟节点 (包括自己)
-        // 只有同一组内的节点才会被这次变动影响
-        const siblings = nextNodes.filter(n => n.parentNode === groupId);
-
-        // 5. 关键步骤：按 Y 轴位置排序
-        // 我们必须知道谁在上面，谁在下面，才能正确地从上到下“堆叠”它们
-        // 如果不排序，数组顺序可能是乱的，会导致布局错乱
+        // 2. 按当前的 Y 轴位置排序 (确保从上到下)
+        // 这一步是为了保持用户预期的顺序，避免因为数组乱序导致节点跳来跳去
         siblings.sort((a, b) => a.position.y - b.position.y);
 
-        // 6. 核心挤压循环 (Accumulator Logic)
-        // 从顶部开始，像砌砖一样，一个接一个地重新计算 Y 坐标
+        // 3. 重新计算 Y 坐标 (堆叠)
         let currentY = LAYOUT_CONFIG.GROUP_PADDING_TOP;
+        // 创建一个 Map 记录需要更新的节点 ID 和新 Y 坐标，为了 O(1) 查找
+        const updates = new Map<string, number>();
 
         siblings.forEach(node => {
-            // 强制重置当前节点的 Y 坐标
-            // 这一步不仅解决了重叠，还顺便实现了“吸附”效果 (消除了多余空隙)
-            node.position.y = currentY;
-
-            // 累加器：当前 Y + 当前节点高度 + 间隙 = 下一个节点的起始 Y
+            updates.set(node.id, currentY);
+            // 累加高度
             const h = getNodeHeight(node);
             currentY += h + LAYOUT_CONFIG.NODE_GAP;
         });
 
-        // 7. 计算并更新父分组的高度
-        // 循环结束后的 currentY 实际上包含了多加的一个 GAP，所以要减掉
-        const newGroupHeight = currentY - LAYOUT_CONFIG.NODE_GAP + LAYOUT_CONFIG.GROUP_PADDING_BOTTOM;
+        // 4. 计算父分组的新高度
+        // 循环结束后的 currentY 实际上包含了多加的一个 GAP，所以要减掉，再加上底部 Padding
+        const newGroupHeight = Math.max(
+            currentY - LAYOUT_CONFIG.NODE_GAP + LAYOUT_CONFIG.GROUP_PADDING_BOTTOM,
+            150
+        );
 
-        // 设置父分组新高度 (同样保证最小高度)
-        groupNode.style.height = Math.max(newGroupHeight, 150);
-        groupNode.height = Math.max(newGroupHeight, 150);
+        // 5. 返回更新后的全量节点数组 (Immutable update)
+        return allNodes.map(node => {
+            // A. 如果是子节点，且需要移动，更新 position.y
+            if (updates.has(node.id)) {
+                return {
+                    ...node,
+                    position: {
+                        ...node.position,
+                        y: updates.get(node.id)!
+                    }
+                };
+            }
+            // B. 如果是父分组，更新高度
+            if (node.id === groupId) {
+                return {
+                    ...node,
+                    style: { ...node.style, height: newGroupHeight },
+                    height: newGroupHeight // 同时也更新 React Flow 内部属性
+                };
+            }
+            // C. 其他节点保持不变
+            return node;
+        });
+    },
 
-        // 返回全新的节点数组，触发 React 重渲染
-        return nextNodes;
+    /**
+     * 🔥🔥🔥 响应式自动重排 (Auto-Layout)
+     * * 场景：当问答节点因为 AI 输出变高，或者手动 Resize 变高时调用。
+     * * 逻辑：现在复用 rearrangeGroup，先更新目标高度，再重排整个组。
+     */
+    adjustLayoutAfterResize: (nodes: Node[], nodeId: string, newHeight: number): Node[] => {
+        // 1. Immutable 深拷贝 & 预处理目标节点高度
+        // 我们先生成一个已经“变高”了的节点列表，然后再传给 rearrangeGroup 去排队
+        const nextNodes = nodes.map(n => {
+            if (n.id === nodeId) {
+                return {
+                    ...n,
+                    style: { ...n.style, height: newHeight },
+                    height: newHeight
+                };
+            }
+            // 浅拷贝其他节点，防止引用副作用
+            return { ...n, style: { ...n.style }, position: { ...n.position } };
+        });
+
+        // 2. 找到父节点 ID
+        const targetNode = nextNodes.find(n => n.id === nodeId);
+        // 如果节点不存在或没有父级，直接返回更新了高度的列表
+        if (!targetNode || !targetNode.parentNode) return nextNodes;
+
+        // 3. 调用复用的重排逻辑，对所在的组进行整理
+        return LayoutUtils.rearrangeGroup(nextNodes, targetNode.parentNode);
     }
 };
