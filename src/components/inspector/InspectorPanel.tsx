@@ -5,7 +5,8 @@ import {
     Type, Settings, Layers, X,
     ZoomIn, ZoomOut, Maximize,
     AlignLeft, Plus, ChevronRight,
-    List, ArrowLeft, type LucideIcon
+    List, ArrowLeft, type LucideIcon,
+    Save, FolderOpen, Camera
 } from 'lucide-react';
 import {
     useReactFlow,
@@ -23,6 +24,8 @@ import type {
     QABlockData,
     GroupBlockData
 } from '../../types';
+
+import { useDataPersistence } from '../../hooks/useDataPersistence';
 
 // -----------------------------------------------------------------------------
 // 1. 样式常量 (建议：后续将此对象移回 constants.ts 统一管理)
@@ -178,6 +181,11 @@ export const InspectorPanel = memo(({ selectedNode: propSelectedNode, selectedEd
     const { zoomIn, zoomOut, fitView, setNodes, setEdges } = useReactFlow();
     const nodes = useNodes();
     const edges = useEdges();
+
+    const { exportToJson, importFromJson, exportToImage } = useDataPersistence(setNodes, setEdges);
+
+    // 隐藏的文件上传 input ref
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     const activeNode = useMemo(() => nodes.find(n => n.id === propSelectedNode?.id) || null, [nodes, propSelectedNode]);
 
@@ -440,6 +448,21 @@ export const InspectorPanel = memo(({ selectedNode: propSelectedNode, selectedEd
                     <IconButton icon={ZoomIn} onClick={() => zoomIn()} title="放大" />
                     <IconButton icon={Maximize} onClick={() => fitView()} title="适应屏幕" />
                     <IconButton icon={ZoomOut} onClick={() => zoomOut()} title="缩小" />
+                    {/* 🔥 1. 固定功能区：项目管理 (始终显示) */}
+                    <IconButton icon={Save} onClick={exportToJson} title="保存项目 (JSON)" />
+
+                    {/* 读取按钮需要触发隐藏的 input */}
+                    <IconButton icon={FolderOpen} onClick={() => fileInputRef.current?.click()} title="读取项目 (JSON)" />
+                    {/* 隐藏的文件输入框 */}
+                    <input
+                        type="file"
+                        ref={fileInputRef}
+                        onChange={importFromJson}
+                        style={{ display: 'none' }}
+                        accept=".json"
+                    />
+                    <IconButton icon={Camera} onClick={exportToImage} title="导出图片 (PNG)" />
+
                 </div>
             </div>
 
