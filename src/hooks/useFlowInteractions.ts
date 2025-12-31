@@ -401,6 +401,12 @@ export const useFlowInteractions = (
                     siblings.push(currentNodeDraft);
                 }
 
+                if(siblings.length === 0){
+                    console.log(`分组 ${groupId} 已空，自动清理`);
+                    return;
+                }
+
+
                 // 核心：按 Y 坐标排序，实现"插入排序"的效果
                 siblings.sort((a, b) => a.position.y - b.position.y);
 
@@ -448,11 +454,9 @@ export const useFlowInteractions = (
             if (action === 'SPLIT') {
                 // 计算新分组所需的高度
                 const newGroupH = LAYOUT_CONFIG.GROUP_PADDING_TOP + nodeH + LAYOUT_CONFIG.GROUP_PADDING_BOTTOM + 20;
-
                 // 初始位置：在鼠标松开的地方
                 let tX = oldGroup.position.x + newPosition.x - 20;
                 const tY = oldGroup.position.y + newPosition.y - LAYOUT_CONFIG.GROUP_PADDING_TOP;
-
                 // 简单的碰撞检测：防止新分组与其他分组重叠
                 let collision = true;
                 let loop = 0;
@@ -461,10 +465,8 @@ export const useFlowInteractions = (
                     for (const ex of nextNodes) {
                         if (ex.type !== 'groupNode') continue;
                         const exW = FIXED_WIDTH;
-                        const exH = (ex.style?.height as number) || 300;
-                        // 检查矩形重叠
-                        if (!(tX + FIXED_WIDTH < ex.position.x || tX > ex.position.x + exW || tY + newGroupH < ex.position.y || tY > ex.position.y + exH)) {
-                            // 如果重叠，向右移动 30px
+                        const exH = (ex.style?.height as number) || 300;// 检查矩形重叠
+                        if (!(tX + FIXED_WIDTH < ex.position.x || tX > ex.position.x + exW || tY + newGroupH < ex.position.y || tY > ex.position.y + exH)) {// 如果重叠，向右移动 30px
                             tX = ex.position.x + exW + 30;
                             collision = true;
                             break;
@@ -472,32 +474,18 @@ export const useFlowInteractions = (
                     }
                     loop++;
                 }
-
                 // 创建新分组
                 const newGroupId = uuidv4();
                 const newGroup = NodeFactory.createGroup(newGroupId, { x: tX, y: tY }, '拆分话题');
                 newGroup.style = { ...newGroup.style, height: newGroupH, width: FIXED_WIDTH };
-
                 // 更新当前节点属性，使其属于新分组
                 currentNodeDraft.parentNode = newGroupId;
                 currentNodeDraft.position = { x: 20, y: LAYOUT_CONFIG.GROUP_PADDING_TOP };
                 currentNodeDraft.style = { ...currentNodeDraft.style, width: CHILD_WIDTH };
                 currentNodeDraft.data = { ...currentNodeDraft.data, isLast: true };
-
                 // 加入列表
                 nextNodes.push(newGroup);
                 nextNodes.push(currentNodeDraft);
-
-                const hasSiblings = nextNodes.some(n => n.parentNode === oldGroup.id);
-
-                if(!hasSiblings){
-                    console.log(`老分组 ${oldGroup.id} 已空，执行自动删除`);
-
-                    const oldGroupIndex = nextNodes.findIndex(n => n.id === oldGroup.id);
-                    if (oldGroupIndex > -1){
-                        nextNodes.splice(oldGroupIndex, 1);
-                    }
-                }
             }
             return nextNodes;
         });
