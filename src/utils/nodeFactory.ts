@@ -28,7 +28,9 @@ export const NodeFactory = {
         extent: undefined,          // 拖拽范围限制 (undefined 表示不限制)
         draggable: true,            // 允许用户拖拽
         selectable: true,           // 允许用户选中
-        style: { width: STYLES.NODE_WIDTH }, // 设置节点宽度 (通常是固定的)
+        style: { width: STYLES.NODE_WIDTH,
+            // height: undefined
+        }, // 设置节点宽度 (通常是固定的),显式注释掉，强调把高度控制权交给 DOM
         data: {
             question: '',           // 默认问题为空
             answer: '',             // 默认回答为空

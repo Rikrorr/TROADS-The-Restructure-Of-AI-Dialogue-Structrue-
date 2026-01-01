@@ -196,12 +196,12 @@ interface InspectorPanelProps {
     onLayout?: () => void;
 }
 
-export const InspectorPanel = memo(({ selectedNode: propSelectedNode, selectedEdge: propSelectedEdge, selectedLabelId, onCreate, onUpdateNode, onDelete,setNodes, setEdges }: InspectorPanelProps) => {
+export const InspectorPanel = memo(({ selectedNode: propSelectedNode, selectedEdge: propSelectedEdge, selectedLabelId, onCreate, onUpdateNode, onDelete,setNodes, setEdges,onLayout }: InspectorPanelProps) => {
     const { zoomIn, zoomOut, fitView } = useReactFlow();
     const nodes = useNodes();
     const edges = useEdges();
 
-    const { exportToJson, importFromJson, exportToImage, importFromGeminiHtml } = useDataPersistence(setNodes, setEdges);
+    const { exportToJson, importFromJson, exportToImage, importFromGeminiHtml } = useDataPersistence(setNodes, setEdges, onLayout);
 
     // 隐藏的文件上传 input ref
     const fileInputRef = useRef<HTMLInputElement>(null);

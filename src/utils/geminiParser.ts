@@ -1,73 +1,67 @@
 // src/utils/geminiParser.ts
 import { v4 as uuidv4 } from 'uuid';
-import type { Node as RFNode, Edge } from 'reactflow';
+import type { Node, Edge } from 'reactflow';
 import { LAYOUT_CONFIG } from '../constants';
+import { NodeFactory } from './nodeFactory';
+import type { NodeCallbacks, ProjectData } from '../types';
 
-export interface ProjectData {
-    version: string;
-    nodes: RFNode[];
-    edges: Edge[];
-    viewport?: { x: number; y: number; zoom: number };
-}
+// =========================================================================
+// 1. 类型与 Mock 回调
+// =========================================================================
 
 interface ParsedTurn {
     role: 'user' | 'model';
     text: string;
 }
 
-/**
- * 策略 A: 基于 Angular 类名的 DOM 解析 (优先级最高)
- * 针对您提供的代码片段：.conversation-container -> .query-text-line / .markdown
- */
+// 虚拟回调：用于导入的静态节点占位
+// 实际交互逻辑通常由 App 层的 Context 或 Hydration 接管
+const mockCallbacks: NodeCallbacks = {
+    onAsk: () => console.log('Mock onAsk'),
+    onHandleDoubleClick: () => console.log('Mock onHandleDoubleClick'),
+    onExtend: () => console.log('Mock onExtend'),
+    // onResize 可选，这里省略
+};
+
+// =========================================================================
+// 2. 解析策略 (DOM & Script)
+// =========================================================================
+
+/** 策略 A: 基于 Angular DOM 解析 (针对标准导出) */
 const parseFromAngularDom = (doc: Document): ParsedTurn[] => {
     const turns: ParsedTurn[] = [];
-
-    // 1. 找到所有的对话容器
-    // 根据您的片段，每个对话轮次都被包在 .conversation-container 里
     const containers = doc.querySelectorAll('.conversation-container');
 
     containers.forEach(container => {
-        // --- 提取用户提问 ---
-        // 您的片段显示：<p class="query-text-line ...">问题内容</p>
+        // 提取用户提问
         const userQueryEl = container.querySelector('.query-text-line');
         if (userQueryEl) {
             const text = (userQueryEl as HTMLElement).innerText.trim();
-            if (text) {
-                turns.push({ role: 'user', text });
-            }
+            if (text) turns.push({ role: 'user', text });
         }
 
-        // --- 提取模型回答 ---
-        // 您的片段显示：<div class="markdown ...">回答内容</div>
+        // 提取模型回答
         const modelResponseEl = container.querySelector('.markdown');
         if (modelResponseEl) {
-            // 🔥🔥🔥 修复点：将 let 改为 const
             const text = (modelResponseEl as HTMLElement).innerText.trim();
-
-            // 简单的噪音过滤 (过滤掉系统内部版本号字符串)
             if (text && !text.startsWith('%.@.') && !text.includes('boq_assistant')) {
                 turns.push({ role: 'model', text });
             }
         }
     });
-
     return turns;
 };
 
-/**
- * 策略 B: 脚本数据挖掘 (备用)
- * 如果 DOM 解析失败，再尝试去脚本里挖
- */
+/** 策略 B: 脚本数据挖掘 (兜底方案) */
 const parseFromScript = (htmlString: string): ParsedTurn[] => {
     const turns: ParsedTurn[] = [];
-    // 简单的脚本正则提取，仅作为备用
     const scriptRegex = /<script[^>]*>([\s\S]*?)<\/script>/gi;
     let match;
+
     while ((match = scriptRegex.exec(htmlString)) !== null) {
         const content = match[1];
         if (!content.includes('WIZ_global_data')) continue;
 
-        // 寻找包含特殊分隔符的字符串
         const magicStringRegex = /"((?:[^"\\]|\\.)*?[\u2230\u221e].*?)"/g;
         let strMatch;
         while ((strMatch = magicStringRegex.exec(content)) !== null) {
@@ -92,57 +86,83 @@ const parseFromScript = (htmlString: string): ParsedTurn[] => {
     return turns;
 };
 
+// =========================================================================
+// 3. 核心转换逻辑 (Parser)
+// =========================================================================
+
 export const convertHtmlToProjectData = (htmlString: string): ProjectData => {
     const parser = new DOMParser();
     const doc = parser.parseFromString(htmlString, 'text/html');
 
-    // 1. 优先尝试 Angular DOM 解析 (这是针对您的文件最准确的)
+    // 1. 执行解析
     let turns = parseFromAngularDom(doc);
-
-    // 2. 如果 DOM 解析没找到东西，尝试脚本解析 (兜底)
     if (turns.length === 0) {
         console.warn("DOM parsing empty, trying script parsing...");
         turns = parseFromScript(htmlString);
     }
 
-    // 3. 构建节点
-    const nodes: RFNode[] = [];
+    const nodes: Node[] = [];
+    const edges: Edge[] = []; // 保持为空，不自动生成连线
+
+    // 生成唯一分组 ID
     const groupId = uuidv4();
+
+    // 初始 Y 坐标
+    // 注意：这里只给一个简单的增量，防止节点完全重叠。
+    // 真正的高度和布局完全交给 useGraphLayout 的自动化机制。
     let currentY = LAYOUT_CONFIG.GROUP_PADDING_TOP;
 
-    nodes.push({
-        id: groupId,
-        type: 'groupNode',
-        position: { x: 0, y: 0 },
-        data: { label: `Gemini 导入 (${new Date().toLocaleDateString()})` },
-        style: { width: LAYOUT_CONFIG.GROUP_WIDTH, height: 500, zIndex: -1 }
-    });
+    // 2. 创建分组节点 (GroupNode)
+    const groupNode = NodeFactory.createGroup(
+        groupId,
+        { x: 0, y: 0 },
+        `Gemini 导入 (${new Date().toLocaleDateString()})`
+    );
+    nodes.push(groupNode);
 
-    if (turns.length === 0) {
-        nodes.push({
-            id: uuidv4(),
-            type: 'chatNode',
-            position: { x: 20, y: currentY },
-            parentNode: groupId,
-            data: {
-                question: "导入失败",
-                answer: "未能解析到对话内容。请确保您保存的是包含对话的完整网页 HTML。",
-                status: 'completed'
+    // 辅助：添加节点到列表
+    const addChatNode = (question: string, answer: string, isLast: boolean) => {
+        // 🔥 使用 Factory 创建节点
+        // 关键点：我们不在 style 中指定 height。
+        // NodeFactory 默认 style.width 是固定的，但 height 留空。
+        // 这允许 ChatNode 组件在渲染时根据内容自动撑开 DOM。
+        const chatNode = NodeFactory.createChat(
+            uuidv4(),
+            { x: 20, y: currentY }, // 初始位置
+            {
+                question: question.slice(0, 500), // 限制问题长度
+                answer: answer,
+                status: 'completed',
+                superBlockId: uuidv4(), // 补全核心 ID
+                isLast: isLast
             },
-            style: { width: LAYOUT_CONFIG.GROUP_WIDTH - 40 }
-        });
+            mockCallbacks,
+            groupId
+        );
+
+        // 🔥 确保移除任何可能的高度设定，强制启用自适应
+        if (chatNode.style) {
+            chatNode.style.height = undefined;
+        }
+
+        nodes.push(chatNode);
+
+        // 临时累加 Y (仅作为初始堆叠间距，非真实高度)
+        currentY += 100;
+    };
+
+    // 3. 处理解析数据
+    if (turns.length === 0) {
+        addChatNode("导入失败", "未能解析到对话内容。请确保您保存的是包含对话的完整网页 HTML。", true);
     } else {
-        // 4. 将线性的 Turns 合并为 Q&A 节点
         let i = 0;
         while (i < turns.length) {
             const t = turns[i];
-
             let question = "";
             let answer = "";
 
             if (t.role === 'user') {
                 question = t.text;
-                // 寻找紧随其后的 Model 回复
                 if (i + 1 < turns.length && turns[i+1].role === 'model') {
                     answer = turns[i+1].text;
                     i += 2;
@@ -151,47 +171,30 @@ export const convertHtmlToProjectData = (htmlString: string): ProjectData => {
                     i++;
                 }
             } else {
-                // 如果是孤立的 Model 回复 (可能是开场白或解析错位)
                 question = "（Gemini 信息）";
                 answer = t.text;
                 i++;
             }
 
-            // 过滤掉系统内部代码
             if (answer.includes('boq_assistant') || (answer.length < 2 && question.includes('信息'))) {
                 continue;
             }
 
-            const nodeId = uuidv4();
-            nodes.push({
-                id: nodeId,
-                type: 'chatNode',
-                position: { x: 20, y: currentY },
-                parentNode: groupId,
-                data: {
-                    question: question.slice(0, 500),
-                    answer: answer,
-                    status: 'completed',
-                    isLast: i >= turns.length
-                },
-                style: { width: LAYOUT_CONFIG.GROUP_WIDTH - 40 }
-            });
-
-            // 估算高度
-            const estimatedHeight = 200 + (answer.length / 25) * 20;
-            currentY += Math.max(300, estimatedHeight);
+            addChatNode(question, answer, i >= turns.length);
         }
     }
 
-    // 修正分组高度
-    if (nodes.length > 1) {
-        nodes[0].style = { ...nodes[0].style, height: currentY + 100 };
-    }
+    // 4. 初始分组高度
+    // 给一个较大的初始值，避免看起来像一条线。后续会自动收缩或撑大。
+    groupNode.style = {
+        ...groupNode.style,
+        height: Math.max(300, currentY + 100)
+    };
 
     return {
         version: '1.0.0',
         nodes: nodes,
-        edges: [],
+        edges: edges,
         viewport: { x: 0, y: 0, zoom: 1 }
     };
 };
