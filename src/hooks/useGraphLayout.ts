@@ -5,9 +5,10 @@ import { LayoutUtils } from '../utils/layoutUtils';
 
 // -----------------------------------------------------------------------------
 // 防抖工具函数 (Debounce Utility)
+// 作用：将短时间内多次触发的函数调用合并为一次执行
+// 修复：使用 ReturnType<typeof setTimeout> 兼容浏览器环境，避免 NodeJS 命名空间报错
+// 修复：使用 unknown[] 替代 any[] 以通过 ESLint 严格模式
 // -----------------------------------------------------------------------------
-// 🔥 修复 1: 使用 unknown[] 替代 any[] 以通过 ESLint 检查
-// 🔥 修复 2: 使用 ReturnType<typeof setTimeout> 替代 NodeJS.Timeout，兼容浏览器环境
 function debounce<T extends (...args: unknown[]) => void>(func: T, wait: number) {
     let timeout: ReturnType<typeof setTimeout> | null = null;
 
@@ -20,7 +21,6 @@ function debounce<T extends (...args: unknown[]) => void>(func: T, wait: number)
 }
 
 export const useGraphLayout = () => {
-    // 解构获取 setNodes，用于更新节点状态
     const { setNodes } = useReactFlow();
 
     // =========================================================================
@@ -59,30 +59,55 @@ export const useGraphLayout = () => {
     // =========================================================================
     // 3. 响应式 Resize 处理 (handleNodeResize)
     // =========================================================================
-    // 此函数由 BaseNodeWrapper (ResizeObserver) 调用
-    // 当 ChatNode 内容撑开 DOM 时，React Flow 会捕捉到尺寸变化并调用此回调
-    const handleNodeResize = useCallback((nodeId: string, _width: number, height: number) => {
+    // 场景 A: ChatNode 内容变多 -> 高度变高 -> 触发重排
+    // 场景 B: GroupNode 宽度变大 -> 强制子节点变宽 -> 子节点高度自适应变化 -> 触发重排
+    const handleNodeResize = useCallback((nodeId: string, width: number, height: number) => {
 
-        // 步骤 A: 立即更新状态 (State Update)
-        // 必须立即将新的高度写入 store，否则 UI 会闪烁或回弹
-        setNodes((nodes) => nodes.map(n => {
-            if (n.id === nodeId) {
-                // 如果高度没变，直接返回原对象 (性能优化)
-                // 注意：这里比较的是 style.height，因为 internal height 可能稍微不同
-                if (n.style?.height === height) return n;
+        setNodes((nodes) => {
+            // 1. 先判断触发 Resize 的是不是 GroupNode
+            const targetNode = nodes.find(n => n.id === nodeId);
+            const isGroup = targetNode?.type === 'groupNode';
 
-                return {
-                    ...n,
-                    style: { ...n.style, height }, // 显式更新 style
-                    height: height                 // 同步更新 internal height
-                };
-            }
-            return n;
-        }));
+            // 2. 如果是 Group，计算出子节点应该有的新宽度
+            // 假设 Group 左右 Padding 共 40px (与 geminiParser/nodeFactory 里的布局逻辑一致)
+            const newChildWidth = isGroup ? Math.max(200, width - 40) : 0;
 
-        // 步骤 B: 触发防抖重排 (Debounced Layout)
-        // 告诉引擎：“有人变高了，等所有人都变完后，排个序”
-        // 这样即使导入 100 个节点，也只会触发 1 次 runLayout，而不是 100 次
+            return nodes.map(n => {
+                // A. 更新触发 resize 的节点本身 (GroupNode 或 ChatNode)
+                if (n.id === nodeId) {
+                    // 性能优化：如果尺寸没变，直接返回原对象
+                    if (n.style?.width === width && n.style?.height === height) return n;
+
+                    return {
+                        ...n,
+                        style: { ...n.style, width, height }, // 显式更新 style
+                        width, height                         // 同步更新 internal measure attributes
+                    };
+                }
+
+                // B. 🔥 联动逻辑：如果是 Group 变宽了，同步更新它的子节点
+                if (isGroup && n.parentNode === nodeId) {
+                    // 如果子节点宽度已经是目标宽度，就不动它
+                    if (n.style?.width === newChildWidth) return n;
+
+                    return {
+                        ...n,
+                        style: {
+                            ...n.style,
+                            width: newChildWidth, // 强制子节点宽度跟随
+                            // 注意：不要在这里设置 height，让子节点组件(ChatNode)基于新宽度自动折行并适应高度
+                        },
+                        width: newChildWidth // 同步 React Flow 内部属性
+                    };
+                }
+
+                return n;
+            });
+        });
+
+        // 3. 触发防抖重排
+        // 无论是 ChatNode 直接变高，还是 GroupNode 变宽导致子节点间接变高，
+        // 最终都会汇聚到这里，触发一次全局布局整理。
         debouncedLayoutRef.current();
 
     }, [setNodes]);
@@ -90,9 +115,7 @@ export const useGraphLayout = () => {
     // 组件卸载时的清理工作
     useEffect(() => {
         return () => {
-            // 在组件卸载时不需要特别的清理动作，
-            // 因为 debouncedLayoutRef.current 是一个闭包，
-            // 且 React Flow 的 setNodes 在卸载后调用是安全的（通常被忽略）。
+            // 这里的闭包清理通常由 GC 处理，但保留 useEffect 结构以便未来扩展
         };
     }, []);
 

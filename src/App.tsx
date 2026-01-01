@@ -221,6 +221,7 @@ function FlowContent() {
                     // 🔥🔥🔥 传入重排函数 🔥🔥🔥
                     // 当导入完成后，useDataPersistence 会自动调用这个函数
                     onLayout={runLayout}
+                    nodeCallbacks={stableCallbacks}
                 />
             </div>
 

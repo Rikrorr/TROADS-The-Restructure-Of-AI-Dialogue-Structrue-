@@ -47,13 +47,13 @@ export const NodeFactory = {
     // 2. 创建分组节点 (Group Node)
     // 职责：生成可视化的分组容器，作为其他节点的父容器
     // =========================================================================
-    createGroup: (id: string, pos: {x: number, y: number}, label: string): Node => ({
+    createGroup: (id: string, pos: {x: number, y: number}, label: string, callbacks?: NodeCallbacks): Node => ({
         id,
         type: 'groupNode',          // 指定节点类型，对应 App.tsx 中的 nodeTypes.groupNode
         position: pos,              // 分组在画布上的绝对坐标
         // 设置初始尺寸：宽度固定，高度默认 150 (后续会根据子节点自动撑高)
         style: { width: LAYOUT_CONFIG.GROUP_WIDTH, height: 150 },
-        data: { label },            // 存储分组标题
+        data: { label, ...callbacks},            // 存储分组标题
         zIndex: -1,                 // 设置极低的层级，确保作为"背景"存在，不遮挡子节点
     }),
 

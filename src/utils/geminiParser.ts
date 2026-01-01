@@ -116,7 +116,8 @@ export const convertHtmlToProjectData = (htmlString: string): ProjectData => {
     const groupNode = NodeFactory.createGroup(
         groupId,
         { x: 0, y: 0 },
-        `Gemini 导入 (${new Date().toLocaleDateString()})`
+        `Gemini 导入 (${new Date().toLocaleDateString()})`,
+        mockCallbacks
     );
     nodes.push(groupNode);
 

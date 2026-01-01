@@ -17,12 +17,14 @@ import {
 } from 'reactflow';
 import { v4 as uuidv4 } from 'uuid';
 
+
 import type {
     TabId,
     CustomEdgeData,
     EdgeLabelData,
     QABlockData,
-    GroupBlockData
+    GroupBlockData,
+    NodeCallbacks
 } from '../../types';
 
 import { useDataPersistence } from '../../hooks/useDataPersistence';
@@ -194,14 +196,16 @@ interface InspectorPanelProps {
     setNodes: React.Dispatch<React.SetStateAction<Node[]>>;
     setEdges: React.Dispatch<React.SetStateAction<Edge[]>>;
     onLayout?: () => void;
+
+    nodeCallbacks?: NodeCallbacks;
 }
 
-export const InspectorPanel = memo(({ selectedNode: propSelectedNode, selectedEdge: propSelectedEdge, selectedLabelId, onCreate, onUpdateNode, onDelete,setNodes, setEdges,onLayout }: InspectorPanelProps) => {
+export const InspectorPanel = memo(({ selectedNode: propSelectedNode, selectedEdge: propSelectedEdge, selectedLabelId, onCreate, onUpdateNode, onDelete,setNodes, setEdges,onLayout, nodeCallbacks }: InspectorPanelProps) => {
     const { zoomIn, zoomOut, fitView } = useReactFlow();
     const nodes = useNodes();
     const edges = useEdges();
 
-    const { exportToJson, importFromJson, exportToImage, importFromGeminiHtml } = useDataPersistence(setNodes, setEdges, onLayout);
+    const { exportToJson, importFromJson, exportToImage, importFromGeminiHtml } = useDataPersistence(setNodes, setEdges, onLayout, nodeCallbacks);
 
     // 隐藏的文件上传 input ref
     const fileInputRef = useRef<HTMLInputElement>(null);

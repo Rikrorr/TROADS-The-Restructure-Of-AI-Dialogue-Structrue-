@@ -2,7 +2,7 @@ import { memo, useState, useMemo } from 'react';
 import { Position, useReactFlow, type NodeProps } from 'reactflow';
 import { Layers } from 'lucide-react';
 import type { GroupBlockData } from '../../../types'; // 确保路径正确
-import { LAYOUT_CONFIG } from '../../../constants';   // 确保路径正确
+//import { LAYOUT_CONFIG } from '../../../constants';   // 确保路径正确
 import { BaseNodeWrapper, type HandleConfig } from '../base';
 
 const groupInnerStyles = {
@@ -33,12 +33,13 @@ export const GroupNode = memo(({ id, data, selected }: NodeProps<GroupBlockData>
         <BaseNodeWrapper
             id={id}
             selected={selected}
+            onResize={data.onResize}
             handles={handlesConfig}
             borderStyle="dashed" // 虚线边框
             selectionColor="#2196F3" // 选中变蓝
             style={{
                 // 核心修改：宽度读取常量，高度 100% 由 React Flow 处理
-                width: `${LAYOUT_CONFIG.GROUP_WIDTH}px`,
+                width: `100%`,
                 height: '100%',
                 backgroundColor: 'rgba(240, 242, 245, 0.7)',
                 paddingTop: '40px',

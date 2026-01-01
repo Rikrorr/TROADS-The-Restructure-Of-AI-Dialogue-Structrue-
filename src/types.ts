@@ -33,7 +33,7 @@ export interface QABlockData extends NodeCallbacks {
 // 🟡 分组节点数据 (GroupBlock)
 export interface GroupBlockData {
     label?: string; // 分组标题
-
+    onResize?: (nodeId: string, width: number, height: number) => void;
     // 如果分组也需要支持 Resize 或其他回调，可以在这里添加
     // 目前 GroupNode 主要是 UI 展示，保留索引签名以防未来扩展
     [key: string]: unknown;
