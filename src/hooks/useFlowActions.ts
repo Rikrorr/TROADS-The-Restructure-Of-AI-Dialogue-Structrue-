@@ -5,14 +5,16 @@ import { v4 as uuidv4 } from 'uuid';
 import type { QABlockData, GroupBlockData } from '../types';
 import { LAYOUT_CONFIG } from '../constants';
 
-export const useFlowActions = () => {
+export const useFlowActions = (externalSetNodes?: React.Dispatch<React.SetStateAction<Node[]>>) => {
     // 1. 获取 React Flow 的底层控制权
     const {
-        setNodes,
+        setNodes: internalSetNodes,
         setEdges,
         getNodes,
         // 🔥 修复 1: 移除了 getEdges, screenToFlowPosition, fitView 等未使用的解构
     } = useReactFlow();
+
+    const setNodes = externalSetNodes || internalSetNodes;
 
     // ==========================================================
     // 🏷️ 基础 CRUD 操作 (通用)
@@ -66,6 +68,7 @@ export const useFlowActions = () => {
                 question: '',
                 answer: '',
                 superBlockId: '',
+                isLast: true,
                 onAsk: () => console.log('Ask triggered'),
                 onHandleDoubleClick: () => {},
                 onExtend: () => {},

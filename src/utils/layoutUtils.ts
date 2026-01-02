@@ -100,6 +100,8 @@ export const LayoutUtils = {
         // 这一步是为了保持用户预期的顺序，避免因为数组乱序导致节点跳来跳去
         siblings.sort((a, b) => a.position.y - b.position.y);
 
+        const lastSiblingId = siblings[siblings.length - 1].id;
+
         // 3. 重新计算 Y 坐标 (堆叠)
         let currentY = LAYOUT_CONFIG.GROUP_PADDING_TOP;
         // 创建一个 Map 记录需要更新的节点 ID 和新 Y 坐标，为了 O(1) 查找
@@ -121,18 +123,36 @@ export const LayoutUtils = {
 
         // 5. 返回更新后的全量节点数组 (Immutable update)
         return allNodes.map(node => {
-            // A. 如果是子节点，且需要移动，更新 position.y
-            if (updates.has(node.id)) {
-                return {
-                    ...node,
-                    position: {
-                        ...node.position,
-                        y: updates.get(node.id)!
-                    }
-                };
+            // A. 处理子节点 (更新位置 + 更新 isLast)
+            if (node.parentNode === groupId) {
+                const newY = updates.get(node.id);
+                // 🔥🔥🔥 核心修复 2: 判断当前节点是否应该是最后一个
+                const shouldBeLast = node.id === lastSiblingId;
+
+                // 检查是否需要更新 (位置变了 OR isLast 状态不对)
+                const isPositionChanged = newY !== undefined && node.position.y !== newY;
+                const isDataChanged = node.data?.isLast !== shouldBeLast;
+
+                // 只有真正需要变化时才创建新对象，优化性能
+                if (isPositionChanged || isDataChanged) {
+                    return {
+                        ...node,
+                        position: newY !== undefined ? { ...node.position, y: newY } : node.position,
+                        data: {
+                            ...node.data,
+                            // 强制覆盖 isLast，确保 UI 永远正确
+                            isLast: shouldBeLast
+                        }
+                    };
+                }
+                return node;
             }
+
             // B. 如果是父分组，更新高度
             if (node.id === groupId) {
+                // 如果高度没变，直接返回原对象
+                if (node.style?.height === newGroupHeight) return node;
+
                 return {
                     ...node,
                     style: { ...node.style, height: newGroupHeight },
