@@ -96,7 +96,7 @@ function FlowContent() {
 
     // 2. 引入业务能力
     // 拿到“触发 AI 回答”的能力
-    const { triggerStream } = useStreamAI();
+    const { triggerStream } = useStreamAI(setNodes);
     // 拿到“调整节点尺寸”的能力 (用于自动布局)
     const { handleNodeResize, runLayout } = useGraphLayout();
 

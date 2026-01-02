@@ -1,9 +1,10 @@
 // src/hooks/useStreamAI.ts
 import { useCallback, useRef, useEffect } from 'react';
 import { useFlowActions } from './useFlowActions';
+import type { Node } from 'reactflow';
 
-export const useStreamAI = () => {
-    const { updateNodeData } = useFlowActions();
+export const useStreamAI = (setNodes?: React.Dispatch<React.SetStateAction<Node[]>>) => {
+    const { updateNodeData } = useFlowActions(setNodes);
 
     // 1. 使用 ref 存储定时器 ID，这样即使组件重渲染，ID 也不会丢失
     // 使用 ReturnType<typeof ...> 是为了兼容浏览器环境和 NodeJS 环境的类型定义

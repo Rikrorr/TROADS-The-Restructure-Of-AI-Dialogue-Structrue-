@@ -80,7 +80,10 @@ export const useFlowInteractions = (
         const newNode = NodeFactory.createChat(
             newNodeId,
             { x: 20, y: LAYOUT_CONFIG.GROUP_PADDING_TOP },
-            { superBlockId: uuidv4() },
+            {
+                superBlockId: uuidv4(),
+                isLast: true
+            },
             callbacks,
             newGroupId
         );
@@ -143,7 +146,10 @@ export const useFlowInteractions = (
         const node = NodeFactory.createChat(
             nodeId,
             { x: 20, y: LAYOUT_CONFIG.GROUP_PADDING_TOP },
-            { superBlockId: uuidv4() },
+            {
+                superBlockId: uuidv4(),
+                isLast: true
+            },
             callbacks,
             groupId
         );
