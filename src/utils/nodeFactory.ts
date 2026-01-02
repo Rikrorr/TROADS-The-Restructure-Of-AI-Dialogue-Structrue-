@@ -29,8 +29,8 @@ export const NodeFactory = {
         draggable: true,            // 允许用户拖拽
         selectable: true,           // 允许用户选中
         style: { width: STYLES.NODE_WIDTH,
-            // height: undefined
-        }, // 设置节点宽度 (通常是固定的),显式注释掉，强调把高度控制权交给 DOM
+            height: LAYOUT_CONFIG.DEFAULT_NODE_HEIGHT
+        }, // 设置节点宽度和初始高度，避免布局跳动
         data: {
             question: '',           // 默认问题为空
             answer: '',             // 默认回答为空

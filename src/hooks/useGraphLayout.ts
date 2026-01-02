@@ -72,7 +72,7 @@ export const useGraphLayout = () => {
             // 假设 Group 左右 Padding 共 40px (与 geminiParser/nodeFactory 里的布局逻辑一致)
             const newChildWidth = isGroup ? Math.max(200, width - 40) : 0;
 
-            return nodes.map(n => {
+            let updatedNodes = nodes.map(n => {
                 // A. 更新触发 resize 的节点本身 (GroupNode 或 ChatNode)
                 if (n.id === nodeId) {
                     // 性能优化：如果尺寸没变，直接返回原对象
@@ -103,6 +103,16 @@ export const useGraphLayout = () => {
 
                 return n;
             });
+            
+            // 🔥 立即对父分组进行重排：如果是 ChatNode，对其父分组进行重排
+            if (!isGroup) {
+                const node = nodes.find(n => n.id === nodeId);
+                if (node?.parentNode) {
+                    updatedNodes = LayoutUtils.rearrangeGroup(updatedNodes, node.parentNode);
+                }
+            }
+            
+            return updatedNodes;
         });
 
         // 3. 触发防抖重排

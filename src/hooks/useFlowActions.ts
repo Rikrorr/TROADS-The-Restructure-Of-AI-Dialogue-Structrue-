@@ -36,6 +36,27 @@ export const useFlowActions = (externalSetNodes?: React.Dispatch<React.SetStateA
     }, [setNodes]);
 
     /**
+     * 更新指定节点的尺寸 (style.width 和 style.height)
+     */
+    const updateNodeSize = useCallback((id: string, width?: number, height?: number) => {
+        setNodes((nds) => nds.map((node) => {
+            if (node.id === id) {
+                return {
+                    ...node,
+                    style: { 
+                        ...node.style, 
+                        ...(width !== undefined && { width }),
+                        ...(height !== undefined && { height }) 
+                    },
+                    ...(width !== undefined && { width }),
+                    ...(height !== undefined && { height })
+                };
+            }
+            return node;
+        }));
+    }, [setNodes]);
+
+    /**
      * 删除当前选中的节点和连线
      */
     const deleteSelection = useCallback(() => {
@@ -118,6 +139,7 @@ export const useFlowActions = (externalSetNodes?: React.Dispatch<React.SetStateA
 
     return {
         updateNodeData,
+        updateNodeSize,
         deleteSelection,
         addChatNode,
         addGroupNode,

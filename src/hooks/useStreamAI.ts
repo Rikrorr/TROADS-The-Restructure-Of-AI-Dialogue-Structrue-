@@ -1,5 +1,5 @@
 // src/hooks/useStreamAI.ts
-import { useCallback, useRef, useEffect } from 'react';
+import { useCallback, useEffect } from 'react';
 import { useFlowActions } from './useFlowActions';
 import type { Node } from 'reactflow';
 
@@ -17,7 +17,7 @@ const globalStreamingState = new Map<string, {
 }>();
 
 export const useStreamAI = (setNodes?: React.Dispatch<React.SetStateAction<Node[]>>) => {
-    const { updateNodeData, getNodes } = useFlowActions(setNodes);
+    const { updateNodeData, getNodes, updateNodeSize } = useFlowActions(setNodes);
 
     // 清理函数
     const cleanupStreamingState = useCallback((nodeId: string) => {
@@ -149,6 +149,18 @@ export const useStreamAI = (setNodes?: React.Dispatch<React.SetStateAction<Node[
                             answer: state.state.currentAnswer,
                             __timestamp: Date.now() // 添加时间戳强制UI更新
                         });
+                        
+                        // 🔥 强制触发节点尺寸更新以触发布局重排
+                        setTimeout(() => {
+                            // 获取实际 DOM 元素的高度并更新节点尺寸
+                            const nodeElement = document.querySelector(`[data-id='${nodeId}']`);
+                            if (nodeElement) {
+                                const newHeight = nodeElement.clientHeight;
+                                if (newHeight > 0) {
+                                    updateNodeSize(nodeId, undefined, newHeight);
+                                }
+                            }
+                        }, 100); // 稍微延迟以确保DOM已更新
                     }, 50);
                     
                     // 从全局状态中移除
@@ -166,7 +178,7 @@ export const useStreamAI = (setNodes?: React.Dispatch<React.SetStateAction<Node[
         if (state) {
             state.timeoutId = timeoutId;
         }
-    }, [updateNodeData, getNodes, cleanupStreamingState]);
+    }, [updateNodeData, getNodes, updateNodeSize, cleanupStreamingState]);
 
     return { triggerStream };
 };

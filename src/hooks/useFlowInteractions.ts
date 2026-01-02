@@ -91,7 +91,11 @@ export const useFlowInteractions = (
 
         const newEdge = NodeFactory.createEdge(parentNodeId, newNodeId, edgeSourceHandle, edgeTargetHandle);
 
-        setNodes(nds => [...deselectAll(nds), { ...newGroup, selected: true }, newNode]);
+        setNodes(nds => {
+            const updatedNodes = [...deselectAll(nds), { ...newGroup, selected: true }, newNode];
+            // 🔥 立即对新分组进行重排
+            return LayoutUtils.rearrangeGroup(updatedNodes, newGroupId);
+        });
         setEdges(eds => [...eds, newEdge]);
     }, [nodes, setNodes, setEdges, callbacks, DEFAULT_GROUP_WIDTH, DEFAULT_CHILD_WIDTH]);
 
@@ -109,23 +113,34 @@ export const useFlowInteractions = (
         const currentGroupWidth = (groupNode?.style?.width as number) || DEFAULT_GROUP_WIDTH;
         const currentChildWidth = currentGroupWidth - PADDING_X;
 
-        setNodes(nds => nds.map(n => n.id === parentNodeId ? { ...n, data: { ...n.data, isLast: false } } : n));
+        setNodes(nds => {
+            // 先更新父节点的 isLast 状态
+            let updatedNodes = nds.map(n => n.id === parentNodeId ? { ...n, data: { ...n.data, isLast: false } } : n);
+            
+            // 添加新节点
+            const siblings = updatedNodes.filter(n => n.parentNode === groupId);
+            const nextY = LayoutUtils.getNextNodeY(siblings);
+            const newNodeId = uuidv4();
 
-        const siblings = nodes.filter(n => n.parentNode === groupId);
-        const nextY = LayoutUtils.getNextNodeY(siblings);
-        const newNodeId = uuidv4();
+            const newNode = NodeFactory.createChat(
+                newNodeId,
+                { x: 20, y: nextY },
+                { superBlockId, isLast: true },
+                callbacks,
+                groupId
+            );
+            // 🔥 应用计算出的动态宽度
+            newNode.style = { 
+                ...newNode.style, 
+                width: currentChildWidth,
+                height: LAYOUT_CONFIG.DEFAULT_NODE_HEIGHT // 设置初始高度避免布局跳动
+            };
 
-        const newNode = NodeFactory.createChat(
-            newNodeId,
-            { x: 20, y: nextY },
-            { superBlockId, isLast: true },
-            callbacks,
-            groupId
-        );
-        // 🔥 应用计算出的动态宽度
-        newNode.style = { ...newNode.style, width: currentChildWidth };
-
-        setNodes(nds => [...nds, newNode]);
+            updatedNodes = [...updatedNodes, newNode];
+            
+            // 🔥 立即对整个分组进行重排
+            return LayoutUtils.rearrangeGroup(updatedNodes, groupId);
+        });
     }, [nodes, setNodes, callbacks, DEFAULT_GROUP_WIDTH]);
 
     // =========================================================================
@@ -278,14 +293,18 @@ export const useFlowInteractions = (
         let action: 'MERGE' | 'SPLIT' | 'SNAP' = 'SNAP';
         let targetGroupNode: Node | undefined = undefined;
 
-        // 碰撞检测：寻找目标分组
+        // 碰撞检测：寻找目标分组（增加容差以提升易用性）
+        const DRAG_TOLERANCE = 20; // 拖拽容差，单位像素
         targetGroupNode = nodes.find(n => {
             if (n.type !== 'groupNode') return false;
             // 🔥 使用目标分组的 *实际宽度* 进行碰撞检测
             const gW = (n.style?.width as number) || DEFAULT_GROUP_WIDTH;
             const gH = (n.style?.height as number) || 300;
-            return (cursorX > n.position.x && cursorX < n.position.x + gW &&
-                cursorY > n.position.y && cursorY < n.position.y + gH);
+            // 增加容差，使拖拽更容易触发
+            return (cursorX > n.position.x - DRAG_TOLERANCE && 
+                    cursorX < n.position.x + gW + DRAG_TOLERANCE &&
+                    cursorY > n.position.y - DRAG_TOLERANCE && 
+                    cursorY < n.position.y + gH + DRAG_TOLERANCE);
         });
 
         if (targetGroupNode) {
@@ -429,7 +448,7 @@ export const useFlowInteractions = (
             return nextNodes;
         });
         dragStartPosRef.current = null;
-    }, [nodes, setNodes, setEdges, DEFAULT_CHILD_WIDTH, DEFAULT_GROUP_WIDTH]);
+    }, [nodes, setNodes, setEdges, callbacks, DEFAULT_CHILD_WIDTH, DEFAULT_GROUP_WIDTH]);
 
     return {
         handleHandleDoubleClick,
