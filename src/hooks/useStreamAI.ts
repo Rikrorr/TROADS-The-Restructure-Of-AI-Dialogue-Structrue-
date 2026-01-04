@@ -1,184 +1,136 @@
 // src/hooks/useStreamAI.ts
-import { useCallback, useEffect } from 'react';
-import { useFlowActions } from './useFlowActions';
+import { useCallback, useRef } from 'react';
 import type { Node } from 'reactflow';
+import { useFlowActions } from './useFlowActions';
 
-// 定义一个全局的流状态管理器，避免多个实例冲突
-const globalStreamingState = new Map<string, { 
-    intervalId: number | null, 
-    timeoutId: number | null,
-    maxTimeoutId: number | null,
-    state: {
-        nodeId: string,
-        fakeAnswer: string,
-        i: number,
-        currentAnswer: string
-    }
-}>();
+export const useStreamAI = (
+    setNodes: React.Dispatch<React.SetStateAction<Node[]>>
+) => {
+    // 🔥 修复 1: 移除第二个参数，只传 setNodes
+    // 因为您的 useFlowActions 定义只接受一个参数，这样就匹配了
+    const { updateNodeData } = useFlowActions(setNodes);
 
-export const useStreamAI = (setNodes?: React.Dispatch<React.SetStateAction<Node[]>>) => {
-    const { updateNodeData, getNodes, updateNodeSize } = useFlowActions(setNodes);
+    // 用 ref 存储当前的 reader，以便后续实现“停止生成”功能（预留）
+    const readerRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
 
-    // 清理函数
-    const cleanupStreamingState = useCallback((nodeId: string) => {
-        const state = globalStreamingState.get(nodeId);
-        if (state) {
-            if (state.intervalId) clearInterval(state.intervalId);
-            if (state.timeoutId) clearTimeout(state.timeoutId);
-            if (state.maxTimeoutId) clearTimeout(state.maxTimeoutId);
-            globalStreamingState.delete(nodeId);
-        }
-    }, []);
+    const triggerStream = useCallback(async (nodeId: string, question: string) => {
+        // 1. 读取配置
+        const apiKey = localStorage.getItem('troads_api_key');
+        const baseUrl = localStorage.getItem('troads_base_url') || 'https://api.openai.com/v1';
+        const model = localStorage.getItem('troads_model') || 'gpt-3.5-turbo';
 
-    // 组件卸载时的清理逻辑
-    useEffect(() => {
-        return () => {
-            // 清理所有活动的流
-            for (const nodeId of globalStreamingState.keys()) {
-                cleanupStreamingState(nodeId);
-            }
-        };
-    }, [cleanupStreamingState]);
+        // 2. 将状态置为 loading
+        updateNodeData(nodeId, { status: 'loading', question });
 
-    const triggerStream = useCallback((nodeId: string, question: string) => {
-        console.log(`Starting stream for node: ${nodeId}, question: ${question}`);
-        
-        // 先清理之前的流状态（如果存在）
-        cleanupStreamingState(nodeId);
+        // ==================================================================================
+        // 分支 A: 如果有 API Key -> 真实请求
+        // ==================================================================================
+        if (apiKey) {
+            try {
+                // 3. 发起 Fetch 请求
+                const response = await fetch(`${baseUrl}/chat/completions`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${apiKey}`
+                    },
+                    body: JSON.stringify({
+                        model: model,
+                        messages: [
+                            { role: "system", content: "You are a helpful assistant assisting with thinking processes." },
+                            { role: "user", content: question }
+                        ],
+                        stream: true // 开启流式
+                    })
+                });
 
-        // 设置当前流式传输的状态
-        const fakeAnswer = `针对该问题的回答...
-(模拟流式输出)
-
-1. 修复了 ESLint prefer-const 报错。
-2. 使用 useFlowActions 解耦。
-3. 代码更加规范，且修复了内存泄漏风险。
-
-(模拟结束)`;
-        
-        // 初始化状态
-        const initialState = {
-            nodeId,
-            fakeAnswer,
-            i: 0,
-            currentAnswer: ''
-        };
-        
-        globalStreamingState.set(nodeId, {
-            intervalId: null,
-            timeoutId: null,
-            maxTimeoutId: null,
-            state: initialState
-        });
-
-        // 1. 设置 Loading
-        updateNodeData(nodeId, { question, status: 'loading' });
-        console.log(`Set loading status for ${nodeId}`);
-
-        // 2. 模拟网络请求延迟 (Loading 阶段)
-        const timeoutId = window.setTimeout(() => {
-            console.log(`Starting streaming for ${nodeId}`);
-            // 开始 Streaming
-            updateNodeData(nodeId, { status: 'streaming', answer: '' });
-
-            // 获取当前状态
-            const currentState = globalStreamingState.get(nodeId);
-            if (!currentState) return;
-            
-            // 设置最大超时保护，确保状态最终会被设置为completed
-            const maxTimeoutId = window.setTimeout(() => {
-                console.log(`Max timeout reached for ${nodeId}, forcing completed status`);
-                // 如果由于某些原因interval没有正常结束，强制设置为completed
-                updateNodeData(nodeId, { status: 'completed' });
-                
-                // 清理定时器
-                const state = globalStreamingState.get(nodeId);
-                if (state && state.intervalId) {
-                    clearInterval(state.intervalId);
-                    state.intervalId = null;
+                if (!response.ok) {
+                    const errText = await response.text();
+                    throw new Error(`API Error ${response.status}: ${errText}`);
                 }
-                
-                // 清理全局状态
-                globalStreamingState.delete(nodeId);
-            }, 10000); // 10秒后强制完成
-            
-            // 更新状态中的maxTimeoutId
-            currentState.maxTimeoutId = maxTimeoutId;
 
-            // 3. 模拟打字机效果 (Streaming 阶段)
-            const intervalId = window.setInterval(() => {
-                const state = globalStreamingState.get(nodeId);
-                if (!state) {
-                    console.log(`State not found for ${nodeId}, clearing interval`);
-                    clearInterval(intervalId);
-                    return;
-                }
-                
-                console.log(`Interval tick: nodeId=${state.state.nodeId}, i=${state.state.i}, length=${state.state.fakeAnswer.length}`);
-                
-                // 检查节点是否仍然存在于流程图中
-                const nodeExists = getNodes().some(node => node.id === state.state.nodeId);
-                if (!nodeExists) {
-                    console.log(`Node ${state.state.nodeId} no longer exists`);
-                    // 节点已被删除，清理定时器
-                    clearInterval(intervalId);
-                    if (state.maxTimeoutId) clearTimeout(state.maxTimeoutId);
-                    
-                    // 从全局状态中移除
-                    globalStreamingState.delete(nodeId);
-                    return;
-                }
-                
-                if (state.state.i < state.state.fakeAnswer.length) {
-                    state.state.currentAnswer += state.state.fakeAnswer.charAt(state.state.i);
-                    updateNodeData(state.state.nodeId, { answer: state.state.currentAnswer });
-                    state.state.i++;
-                } else {
-                    console.log(`Stream completed for ${state.state.nodeId}, setting completed status`);
-                    // 4. 完成 - 清理并设置完成状态
-                    clearInterval(intervalId);
-                    if (state.maxTimeoutId) clearTimeout(state.maxTimeoutId);
-                    
-                    // 确保完成状态更新
-                    updateNodeData(state.state.nodeId, { status: 'completed' });
-                    
-                    // 为了确保UI更新，额外触发一次更新
-                    setTimeout(() => {
-                        updateNodeData(state.state.nodeId, { 
-                            status: 'completed',
-                            answer: state.state.currentAnswer,
-                            __timestamp: Date.now() // 添加时间戳强制UI更新
-                        });
-                        
-                        // 🔥 强制触发节点尺寸更新以触发布局重排
-                        setTimeout(() => {
-                            // 获取实际 DOM 元素的高度并更新节点尺寸
-                            const nodeElement = document.querySelector(`[data-id='${nodeId}']`);
-                            if (nodeElement) {
-                                const newHeight = nodeElement.clientHeight;
-                                if (newHeight > 0) {
-                                    updateNodeSize(nodeId, undefined, newHeight);
+                if (!response.body) throw new Error('No response body');
+
+                // 4. 处理流式响应
+                const reader = response.body.getReader();
+                readerRef.current = reader;
+                const decoder = new TextDecoder();
+
+                // 状态转为 streaming，清空 answer 准备接收
+                updateNodeData(nodeId, { status: 'streaming', answer: '' });
+
+                let fullAnswer = '';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    const chunk = decoder.decode(value, { stream: true });
+                    // OpenAI 返回的数据可能包含多行 "data: {...}"
+                    const lines = chunk.split('\n').filter(line => line.trim() !== '');
+
+                    for (const line of lines) {
+                        if (line === 'data: [DONE]') continue;
+                        if (line.startsWith('data: ')) {
+                            try {
+                                const jsonStr = line.replace('data: ', '');
+                                const json = JSON.parse(jsonStr);
+                                const content = json.choices[0]?.delta?.content || '';
+
+                                if (content) {
+                                    fullAnswer += content;
+                                    // 实时更新 UI
+                                    updateNodeData(nodeId, { answer: fullAnswer });
                                 }
+                            } catch (e) {
+                                console.warn('JSON parse error', e);
                             }
-                        }, 100); // 稍微延迟以确保DOM已更新
-                    }, 50);
-                    
-                    // 从全局状态中移除
-                    globalStreamingState.delete(nodeId);
+                        }
+                    }
                 }
-            }, 20);
-            
-            // 更新状态中的intervalId
-            currentState.intervalId = intervalId;
 
-        }, 600);
-        
-        // 更新状态中的timeoutId
-        const state = globalStreamingState.get(nodeId);
-        if (state) {
-            state.timeoutId = timeoutId;
+                // 5. 完成
+                updateNodeData(nodeId, { status: 'completed' });
+
+            } catch (error: unknown) { // 🔥 修复 2: 使用 unknown 类型
+                console.error('Stream AI Error:', error);
+
+                // 安全地获取错误信息
+                const errorMessage = error instanceof Error ? error.message : String(error);
+
+                updateNodeData(nodeId, {
+                    status: 'input', // 回退到 input 允许重试
+                    answer: `请求失败: ${errorMessage}`
+                });
+            }
+
         }
-    }, [updateNodeData, getNodes, updateNodeSize, cleanupStreamingState]);
+            // ==================================================================================
+            // 分支 B: 如果没有 API Key -> 模拟数据 (测试用)
+        // ==================================================================================
+        else {
+            console.log("未检测到 API Key，使用模拟模式...");
+
+            // 模拟网络延迟
+            setTimeout(() => {
+                updateNodeData(nodeId, { status: 'streaming', answer: '' });
+
+                const mockResponse = `[模拟模式] 你好！这是一个测试回复。\n\n针对你的问题：“${question}”\n\n我的回答是：因为你没有在左下角设置 API Key，所以我只能假装思考一下。请点击左下角设置图标填入 Key 来体验真实 AI 能力。\n\n(这里是模拟的打字机效果...)`;
+
+                let i = 0;
+                const interval = setInterval(() => {
+                    if (i < mockResponse.length) {
+                        updateNodeData(nodeId, { answer: mockResponse.slice(0, i + 1) });
+                        i++;
+                    } else {
+                        clearInterval(interval);
+                        updateNodeData(nodeId, { status: 'completed' });
+                    }
+                }, 30); // 打字速度
+            }, 1000); // 启动延迟
+        }
+
+    }, [updateNodeData]);
 
     return { triggerStream };
 };

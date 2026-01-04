@@ -6,7 +6,7 @@ import {
     ZoomIn, ZoomOut, Maximize,
     AlignLeft, Plus, ChevronRight,
     List, ArrowLeft, type LucideIcon,
-    Save, FolderOpen, Camera, FileCode
+    Save, FolderOpen, Camera, FileCode, Sliders
 } from 'lucide-react';
 import {
     useReactFlow,
@@ -181,6 +181,222 @@ const ColorPicker = ({ label, value, onChange }: ColorPickerProps) => {
     );
 };
 
+
+// =============================================================================
+// 🔥 新增：API 设置弹窗组件 (定义在 InspectorPanel 内部)
+// =============================================================================
+// 定义预设配置
+const PRESETS = {
+    openai: {
+        name: 'OpenAI',
+        baseUrl: 'https://api.openai.com/v1',
+        model: 'gpt-3.5-turbo'
+    },
+    deepseek: {
+        name: 'DeepSeek',
+        baseUrl: 'https://api.deepseek.com',
+        model: 'deepseek-chat'
+    },
+    moonshot: {
+        name: 'Moonshot (Kimi)',
+        baseUrl: 'https://api.moonshot.cn/v1',
+        model: 'moonshot-v1-8k'
+    },
+    ollama: {
+        name: 'Ollama (Local)',
+        baseUrl: 'http://localhost:11434/v1',
+        model: 'llama3'
+    },
+    lmstudio: {
+        name: 'LM Studio (Local)',
+        baseUrl: 'http://localhost:1234/v1',
+        model: 'local-model'
+    }
+};
+
+type ProviderKey = keyof typeof PRESETS | 'custom';
+
+const ApiSettingsModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) => {
+    // 读取保存的值
+    const [apiKey, setApiKey] = useState(() => localStorage.getItem('troads_api_key') || '');
+    const [baseUrl, setBaseUrl] = useState(() => localStorage.getItem('troads_base_url') || PRESETS.openai.baseUrl);
+    const [model, setModel] = useState(() => localStorage.getItem('troads_model') || PRESETS.openai.model);
+
+    // UI 状态：模式 ('cloud' | 'local')
+    const [mode, setMode] = useState<'cloud' | 'local'>(() => {
+        const url = localStorage.getItem('troads_base_url') || '';
+        return url.includes('localhost') || url.includes('127.0.0.1') ? 'local' : 'cloud';
+    });
+
+    // UI 状态：当前选中的厂商
+    const [provider, setProvider] = useState<ProviderKey>('custom');
+
+    // 切换厂商时的联动逻辑
+    const handleProviderChange = (newProvider: ProviderKey) => {
+        setProvider(newProvider);
+        if (newProvider !== 'custom') {
+            const preset = PRESETS[newProvider as keyof typeof PRESETS];
+            setBaseUrl(preset.baseUrl);
+            setModel(preset.model);
+        }
+    };
+
+    // 切换模式时的默认值重置
+    const handleModeChange = (newMode: 'cloud' | 'local') => {
+        setMode(newMode);
+        setProvider('custom'); // 切换模式后重置为自定义，防止逻辑冲突
+        if (newMode === 'local') {
+            setBaseUrl(PRESETS.ollama.baseUrl);
+            setModel(PRESETS.ollama.model);
+        } else {
+            setBaseUrl(PRESETS.openai.baseUrl);
+            setModel(PRESETS.openai.model);
+        }
+    };
+
+    const handleSave = () => {
+        localStorage.setItem('troads_api_key', apiKey);
+        localStorage.setItem('troads_base_url', baseUrl);
+        localStorage.setItem('troads_model', model);
+        alert(`设置已保存！\n当前模式: ${mode === 'local' ? '🏠 本地部署' : '☁️ 云端 API'}`);
+        onClose();
+    };
+
+    if (!isOpen) return null;
+
+    return (
+        <div style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.5)', zIndex: 2000,
+            display: 'flex', alignItems: 'center', justifyContent: 'center'
+        }}>
+            <div style={{
+                backgroundColor: 'white', padding: '24px', borderRadius: '12px',
+                width: '420px', boxShadow: '0 8px 30px rgba(0,0,0,0.12)',
+                fontFamily: 'system-ui, -apple-system, sans-serif'
+            }}>
+                <h3 style={{ marginTop: 0, marginBottom: '20px', color: '#1f2937', fontSize: '18px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Settings size={20} /> LLM 连接设置
+                </h3>
+
+                {/* 1. 顶部切换卡 (Toggle) */}
+                <div style={{ display: 'flex', backgroundColor: '#f3f4f6', padding: '4px', borderRadius: '8px', marginBottom: '20px' }}>
+                    <button
+                        onClick={() => handleModeChange('cloud')}
+                        style={{
+                            flex: 1, padding: '8px', borderRadius: '6px', border: 'none', cursor: 'pointer', fontSize: '14px', fontWeight: 500,
+                            backgroundColor: mode === 'cloud' ? '#fff' : 'transparent',
+                            color: mode === 'cloud' ? '#2563eb' : '#6b7280',
+                            boxShadow: mode === 'cloud' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                            transition: 'all 0.2s'
+                        }}
+                    >
+                        ☁️ 云端 API
+                    </button>
+                    <button
+                        onClick={() => handleModeChange('local')}
+                        style={{
+                            flex: 1, padding: '8px', borderRadius: '6px', border: 'none', cursor: 'pointer', fontSize: '14px', fontWeight: 500,
+                            backgroundColor: mode === 'local' ? '#fff' : 'transparent',
+                            color: mode === 'local' ? '#10b981' : '#6b7280',
+                            boxShadow: mode === 'local' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                            transition: 'all 0.2s'
+                        }}
+                    >
+                        🏠 本地部署
+                    </button>
+                </div>
+
+                {/* 2. 厂商预设 (仅在云端模式或本地模式显示对应的) */}
+                <div style={{ marginBottom: '16px' }}>
+                    <label style={STYLES.label}>快速预设</label>
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '8px' }}>
+                        {mode === 'cloud' ? (
+                            <>
+                                <button style={provider === 'openai' ? activeChipStyle : chipStyle} onClick={() => handleProviderChange('openai')}>OpenAI</button>
+                                <button style={provider === 'deepseek' ? activeChipStyle : chipStyle} onClick={() => handleProviderChange('deepseek')}>DeepSeek</button>
+                                <button style={provider === 'moonshot' ? activeChipStyle : chipStyle} onClick={() => handleProviderChange('moonshot')}>Kimi</button>
+                            </>
+                        ) : (
+                            <>
+                                <button style={provider === 'ollama' ? activeChipStyle : chipStyle} onClick={() => handleProviderChange('ollama')}>Ollama</button>
+                                <button style={provider === 'lmstudio' ? activeChipStyle : chipStyle} onClick={() => handleProviderChange('lmstudio')}>LM Studio</button>
+                            </>
+                        )}
+                        <button style={provider === 'custom' ? activeChipStyle : chipStyle} onClick={() => setProvider('custom')}>自定义</button>
+                    </div>
+                </div>
+
+                {/* 3. API Key (仅云端需要，本地选填) */}
+                {mode === 'cloud' && (
+                    <div style={{ marginBottom: '16px' }}>
+                        <label style={STYLES.label}>API Key <span style={{color:'red'}}>*</span></label>
+                        <input
+                            type="password"
+                            value={apiKey}
+                            onChange={(e) => { setApiKey(e.target.value); setProvider('custom'); }}
+                            placeholder="sk-..."
+                            style={STYLES.input}
+                        />
+                    </div>
+                )}
+
+                {/* 4. Base URL */}
+                <div style={{ marginBottom: '16px' }}>
+                    <label style={STYLES.label}>Base URL (接口地址)</label>
+                    <input
+                        type="text"
+                        value={baseUrl}
+                        onChange={(e) => { setBaseUrl(e.target.value); setProvider('custom'); }}
+                        placeholder="https://..."
+                        style={STYLES.input}
+                    />
+                    {mode === 'local' && <div style={{fontSize: '11px', color: '#6b7280', marginTop: '4px'}}>💡 提示: 确保本地服务已允许跨域 (CORS)</div>}
+                </div>
+
+                {/* 5. Model Name */}
+                <div style={{ marginBottom: '24px' }}>
+                    <label style={STYLES.label}>模型名称 (Model ID)</label>
+                    <input
+                        type="text"
+                        value={model}
+                        onChange={(e) => { setModel(e.target.value); setProvider('custom'); }}
+                        placeholder={mode === 'local' ? "例如: llama3, qwen2" : "例如: gpt-4o, deepseek-chat"}
+                        style={STYLES.input}
+                    />
+                </div>
+
+                {/* 底部按钮 */}
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', paddingTop: '16px', borderTop: '1px solid #f3f4f6' }}>
+                    <button
+                        onClick={onClose}
+                        style={{ padding: '8px 16px', background: 'white', border: '1px solid #e5e7eb', borderRadius: '6px', cursor: 'pointer', color: '#374151' }}
+                    >
+                        取消
+                    </button>
+                    <button
+                        onClick={handleSave}
+                        style={{ padding: '8px 16px', background: mode === 'local' ? '#10b981' : '#2563eb', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 500 }}
+                    >
+                        保存并生效
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// 辅助样式
+const chipStyle: React.CSSProperties = {
+    padding: '4px 10px', borderRadius: '16px', border: '1px solid #e5e7eb',
+    backgroundColor: '#fff', fontSize: '12px', cursor: 'pointer', color: '#4b5563'
+};
+const activeChipStyle: React.CSSProperties = {
+    ...chipStyle,
+    borderColor: '#2563eb', backgroundColor: '#eff6ff', color: '#2563eb', fontWeight: 600
+};
+
+
 // -----------------------------------------------------------------------------
 // 3. 主面板组件
 // -----------------------------------------------------------------------------
@@ -206,6 +422,8 @@ export const InspectorPanel = memo(({ selectedNode: propSelectedNode, selectedEd
     const edges = useEdges();
 
     const { exportToJson, importFromJson, exportToImage, importFromGeminiHtml } = useDataPersistence(setNodes, setEdges, onLayout, nodeCallbacks);
+
+    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
     // 隐藏的文件上传 input ref
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -451,7 +669,7 @@ export const InspectorPanel = memo(({ selectedNode: propSelectedNode, selectedEd
 
                 {isEdgeSelected && (
                     <>
-                        <IconButton icon={Settings} active={activeTab === 'STYLE'} onClick={() => toggleTab('STYLE')} title="线段样式" />
+                        <IconButton icon={Sliders} active={activeTab === 'STYLE'} onClick={() => toggleTab('STYLE')} title="线段样式" />
                         <IconButton icon={List} active={activeTab === 'LABEL_LIST'} onClick={() => toggleTab('LABEL_LIST')} title="字段管理" />
                         <div style={{height: 10}} />
                         <IconButton icon={Trash2} danger onClick={handleDeleteWrapper} title="删除连线" />
@@ -491,10 +709,14 @@ export const InspectorPanel = memo(({ selectedNode: propSelectedNode, selectedEd
                     <input type="file" ref={htmlInputRef} onChange={importFromGeminiHtml} style={{ display: 'none' }} accept=".html,.htm" />
 
                     <IconButton icon={Camera} onClick={exportToImage} title="导出图片 (PNG)" />
+
+                    <div style={STYLES.separator} />
+                    <IconButton icon={Settings} onClick={() => setIsSettingsOpen(true)} title="LLM API 设置" />
                 </div>
             </div>
 
             {renderDetailContent()}
+            <ApiSettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
         </div>
     );
 });

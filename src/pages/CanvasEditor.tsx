@@ -86,7 +86,7 @@ const GraphContextMenu = ({ menu, onDelete }: {
 function FlowContent() {
     // 获取路由参数
     const { projectId } = useParams<{ projectId: string }>();
-    
+
     // 1. 初始化数据状态
     // useNodesState 是 React Flow 特供版 useState，它能自动处理"拖拽"导致的位置更新
     const [nodes, setNodes, onNodesChange] = useNodesState([]);
